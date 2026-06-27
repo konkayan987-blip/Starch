@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard รายงานการตรวจรับแป้งมัน</title>
+
+    <!-- Tailwind CSS สำหรับความสวยงามและ Layout -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Chart.js สำหรับวาดกราฟ -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- PapaParse สำหรับอ่านข้อมูลจาก Google Sheets CSV -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <!-- Day.js สำหรับจัดการวันที่และสัปดาห์ -->
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/plugin/weekOfYear.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/plugin/isBetween.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/locale/th.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap');
+
+        body {
+            font-family: 'Prompt', sans-serif;
+            background-color: #f1f5f9;
+        }
+
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Custom scrollbar for table */
+        .custom-scrollbar::-webkit-scrollbar {
+            height: 6px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 4px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+
+<body class="text-slate-800">
+
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center">
+        <div class="loader mb-4"></div>
+        <h2 class="text-xl font-semibold text-slate-700">กำลังโหลดข้อมูลจาก Google Sheets...</h2>
+        <p class="text-sm text-slate-500 mt-2">กรุณารอสักครู่</p>
+    </div>
+
+    <!-- Main Content -->
+    <div id="mainContent" class="hidden p-4 md:p-8 max-w-7xl mx-auto space-y-6">
+
+        <!-- Header -->
+        <div
+            class="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-800">📊 Dashboard การตรวจรับแป้งมัน</h1>
+                <p class="text-slate-500 text-sm mt-1">ข้อมูลวิเคราะห์คุณภาพและปริมาณแป้งที่รับเข้า</p>
+            </div>
+            <button onclick="fetchData()"
+                class="mt-4 md:mt-0 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 shadow-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z" />
+                    <path
+                        d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z" />
+                </svg>
+                รีเฟรชข้อมูล
+            </button>
+        </div>
+
+        <!-- Filters -->
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap gap-4 items-end">
+            <div class="flex-1 min-w-[150px]">
+                <label class="block text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wider">ปี
+                    (Year)</label>
+                <select id="filterYear"
+                    class="w-full bg-slate-50 border border-slate-200 text-slate-700 rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 outline-none transition">
+                    <option value="all">ทุกปี</option>
+                </select>
+            </div>
+            <div class="flex-1 min-w-[150px]">
+                <label class="block text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wider">เดือน
+                    (Month)</label>
+                <select id="filterMonth"
+                    class="w-full bg-slate-50 border border-slate-200 text-slate-700 rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 outline-none transition">
+                    <option value="all">ทุกเดือน</option>
+                    <option value="0">มกราคม</option>
+                    <option value="1">กุมภาพันธ์</option>
+                    <option value="2">มีนาคม</option>
+                    <option value="3">เมษายน</option>
+                    <option value="4">พฤษภาคม</option>
+                    <option value="5">มิถุนายน</option>
+                    <option value="6">กรกฎาคม</option>
+                    <option value="7">สิงหาคม</option>
+                    <option value="8">กันยายน</option>
+                    <option value="9">ตุลาคม</option>
+                    <option value="10">พฤศจิกายน</option>
+                    <option value="11">ธันวาคม</option>
+                </select>
+            </div>
+            <div class="flex-1 min-w-[150px]">
+                <label class="block text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wider">มุมมองกราฟ (View
+                    By)</label>
+                <select id="filterView"
+                    class="w-full bg-slate-50 border border-slate-200 text-slate-700 rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 outline-none transition">
+                    <option value="month">รายเดือน (Monthly)</option>
+                    <option value="week">รายสัปดาห์ (Weekly)</option>
+                    <option value="day">รายวัน (Daily)</option>
+                </select>
+            </div>
+            <div class="flex-1 min-w-[150px]">
+                <label class="block text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wider">Lot No.</label>
+                <select id="filterLot"
+                    class="w-full bg-slate-50 border border-slate-200 text-slate-700 rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 outline-none transition">
+                    <option value="all">ทุก Lot</option>
+                </select>
+            </div>
+            <div class="flex-1 min-w-[150px]">
+                <label class="block text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wider">ชนิดแป้ง (Type)</label>
+                <select id="filterType"
+                    class="w-full bg-slate-50 border border-slate-200 text-slate-700 rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 outline-none transition">
+                    <option value="all">ทุกชนิด</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Lot Date Range Info -->
+        <div id="lotDateRangeBox" class="hidden bg-blue-50 border border-blue-200 p-3 rounded-xl flex items-center gap-2 text-sm text-blue-700">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5zM1 4v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4H1z"/>
+            </svg>
+            <span id="lotDateRangeText">ช่วงวันที่ของ Lot ที่เลือก</span>
+        </div>
+
+        <!-- KPI Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div
+                class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center gap-4 border-l-4 border-l-blue-500">
+                <div class="bg-blue-100 p-3 rounded-xl text-blue-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path
+                            d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
+                        </path>
+                        <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                        <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                    </svg>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-slate-500">ปริมาณรับเข้ารวม (กก.)</p>
+                    <h3 id="kpiWeight" class="text-2xl font-bold text-slate-800">0</h3>
+                </div>
+            </div>
+
+            <div
+                class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center gap-4 border-l-4 border-l-emerald-500">
+                <div class="bg-emerald-100 p-3 rounded-xl text-emerald-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                    </svg>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-slate-500">อัตราผ่านเกณฑ์ (%)</p>
+                    <h3 id="kpiPassRate" class="text-2xl font-bold text-slate-800">0%</h3>
+                </div>
+            </div>
+
+            <div
+                class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center gap-4 border-l-4 border-l-amber-500">
+                <div class="bg-amber-100 p-3 rounded-xl text-amber-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="3" y1="9" x2="21" y2="9"></line>
+                        <line x1="9" y1="21" x2="9" y2="9"></line>
+                    </svg>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-slate-500">จำนวนครั้งที่รับของ</p>
+                    <h3 id="kpiCount" class="text-2xl font-bold text-slate-800">0</h3>
+                </div>
+            </div>
+
+            <div
+                class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center gap-4 border-l-4 border-l-purple-500">
+                <div class="bg-purple-100 p-3 rounded-xl text-purple-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="9" cy="7" r="4"></circle>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    </svg>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-slate-500">จำนวนซัพพลายเออร์</p>
+                    <h3 id="kpiSupplier" class="text-2xl font-bold text-slate-800">0</h3>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row 1 -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Trend Chart -->
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 lg:col-span-2">
+                <h3 class="text-lg font-bold text-slate-800 mb-4">📈 แนวโน้มปริมาณการรับเข้า (กก.)</h3>
+                <div class="relative h-72">
+                    <canvas id="trendChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Pass/Fail Chart -->
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+                <h3 class="text-lg font-bold text-slate-800 mb-4">✅ ผลการตรวจรับรวม</h3>
+                <div class="relative h-72 flex justify-center">
+                    <canvas id="resultChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row 2 -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Supplier Chart -->
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+                <h3 class="text-lg font-bold text-slate-800 mb-4">🏭 ปริมาณรับแยกตาม Supplier</h3>
+                <div class="relative h-64">
+                    <canvas id="supplierChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Flour Type Chart -->
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+                <h3 class="text-lg font-bold text-slate-800 mb-4">📦 สัดส่วนประเภทแป้ง</h3>
+                <div class="relative h-64 flex justify-center">
+                    <canvas id="typeChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Table Section -->
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 mt-6">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
+                <div>
+                    <h3 class="text-lg font-bold text-slate-800">📋 ข้อมูลรายละเอียดการตรวจรับ</h3>
+                    <p id="tableSummaryNote"
+                        class="text-sm text-slate-500 mt-1 bg-slate-50 inline-block px-3 py-1 rounded-md border border-slate-200">
+                    </p>
+                </div>
+                <span id="tableRecordCount" class="text-sm text-slate-500"></span>
+            </div>
+
+            <!-- Note Box (เพิ่มใหม่) -->
+            <div class="mb-4 bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-lg shadow-sm">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-amber-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"
+                            fill="currentColor">
+                            <path fill-rule="evenodd"
+                                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                                clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <h3 class="text-sm font-medium text-amber-800">Note: การอ่านข้อมูลในตาราง</h3>
+                        <div class="mt-1 text-sm text-amber-700">
+                            <ul class="list-disc pl-5 space-y-1">
+                                <li><span class="font-semibold text-emerald-600">ผ่านเกณฑ์</span> :
+                                    สินค้ามีคุณภาพผ่านตามมาตรฐานที่กำหนด สามารถรับเข้ากระบวนการได้</li>
+                                <li><span class="font-semibold text-rose-600">ไม่ผ่านเกณฑ์</span> :
+                                    สินค้ามีคุณภาพต่ำกว่าเกณฑ์ที่กำหนด อาจต้องตรวจสอบเพิ่มเติมหรือดำเนินการตีกลับ</li>
+                                <li>ตารางจะแสดงผลข้อมูลเรียงจาก <strong>ล่าสุดไปเก่าสุด</strong> (ระบบจะแสดงผลสูงสุด 100
+                                    รายการเพื่อความรวดเร็วในการโหลดข้อมูล)</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto custom-scrollbar">
+                <table class="w-full text-sm text-left text-slate-500">
+                    <thead class="text-xs text-slate-700 uppercase bg-slate-50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 rounded-tl-lg">วันที่รับเข้า</th>
+                            <th scope="col" class="px-6 py-3">ซัพพลายเออร์</th>
+                            <th scope="col" class="px-6 py-3">Lot No.</th>
+                            <th scope="col" class="px-6 py-3">ประเภทแป้ง</th>
+                            <th scope="col" class="px-6 py-3 text-right">ปริมาณ (กก.)</th>
+                            <th scope="col" class="px-6 py-3 rounded-tr-lg text-center">ผลการตรวจ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dataTableBody">
+                        <!-- Rows will be populated via JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // กำหนด Plugin ให้ Day.js
+        dayjs.extend(window.dayjs_plugin_weekOfYear);
+        dayjs.extend(window.dayjs_plugin_isBetween);
+        dayjs.locale('th');
+
+        // ตัวแปรเก็บข้อมูล
+        let rawData = [];
+        let filteredData = [];
+        let charts = {}; // เก็บ object กราฟเพื่อใช้อัปเดต
+
+        // URL ดึงข้อมูลจาก Google Sheets รูปแบบ CSV
+        const SHEET_ID = '1B9zHhiB0lknlC94yd7r6hV_Wzn7xlnqvT1cx6aidoSQ';
+        const SHEET_NAME = 'data_glue';
+        const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${SHEET_NAME}`;
+
+        // โหลดข้อมูลครั้งแรก
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchData();
+
+            // เพิ่ม Event Listener ให้ตัวกรอง
+            document.getElementById('filterYear').addEventListener('change', applyFilters);
+            document.getElementById('filterMonth').addEventListener('change', applyFilters);
+            document.getElementById('filterLot').addEventListener('change', onLotChange);
+            document.getElementById('filterType').addEventListener('change', applyFilters);
+            document.getElementById('filterView').addEventListener('change', renderCharts);
+        });
+
+        // ดึงข้อมูลผ่าน PapaParse
+        function fetchData() {
+            document.getElementById('loadingScreen').classList.remove('hidden');
+            document.getElementById('mainContent').classList.add('hidden');
+
+            Papa.parse(CSV_URL, {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                complete: function (results) {
+                    processData(results.data);
+                },
+                error: function (err) {
+                    alert("ไม่สามารถดึงข้อมูลได้ โปรดตรวจสอบว่าชีตมีการแชร์เป็นสาธารณะ (Anyone with the link can view)");
+                    console.error(err);
+                }
+            });
+        }
+
+        // จัดการและทำความสะอาดข้อมูล
+        function processData(data) {
+            // หาชื่อคอลัมน์ Lot จริงจากชีต (case-insensitive)
+            const sampleRow = data[0] || {};
+            const keys = Object.keys(sampleRow);
+            console.log('[DEBUG] Column names from sheet:', keys);
+
+            const lotKey = keys.find(k => k.replace(/[\s_\-]/g, '').toLowerCase() === 'lotno')
+                        || keys.find(k => k.toLowerCase().includes('lot'));
+            console.log('[DEBUG] Detected Lot column:', lotKey);
+
+            rawData = data.map(row => {
+                // ทำความสะอาดชื่อ Supplier ให้เหมือนกัน เช่น Sms -> SMS
+                let supplier = (row['Supplier'] || 'ไม่ระบุ').trim().toUpperCase();
+
+                // แปลงผลการตรวจเป็นกลุ่มใหญ่ๆ
+                let rawResult = row['Overall_Result'] || '';
+                let result = 'รอตรวจสอบ';
+                if (rawResult.includes('ไม่ผ่าน')) result = 'ไม่ผ่านเกณฑ์';
+                else if (rawResult.includes('ผ่าน')) result = 'ผ่านเกณฑ์';
+
+                return {
+                    date: dayjs(row['ReceiveDate']), // ใช้วันที่รับของ
+                    weight: parseFloat(row['Weight']) || 0,
+                    supplier: supplier,
+                    type: row['FlourType'] || 'ไม่ระบุ',
+                    lotNo: lotKey ? (row[lotKey] || '').trim() : '',
+                    result: result
+                };
+            }).filter(item => item.date.isValid()); // กรองเฉพาะแถวที่มีวันที่ถูกต้อง
+
+            // สร้างตัวเลือกปีใน Dropdown
+            populateYearFilter();
+
+            // สร้างตัวเลือก Lot No. ใน Dropdown
+            populateLotFilter();
+
+            // สร้างตัวเลือกชนิดแป้งใน Dropdown
+            populateTypeFilter();
+
+            // กรองและวาดกราฟ+ตาราง
+            applyFilters();
+
+            // ปิด Loading
+            document.getElementById('loadingScreen').classList.add('hidden');
+            document.getElementById('mainContent').classList.remove('hidden');
+        }
+
+        // สร้าง Dropdown ให้เลือกปีอัตโนมัติจากข้อมูล
+        function populateYearFilter() {
+            const years = [...new Set(rawData.map(item => item.date.year()))].sort((a, b) => b - a);
+            const yearSelect = document.getElementById('filterYear');
+
+            // เก็บค่าเก่าที่เลือกไว้
+            const currentVal = yearSelect.value;
+
+            yearSelect.innerHTML = '<option value="all">ทุกปี</option>';
+            years.forEach(year => {
+                const option = document.createElement('option');
+                option.value = year;
+                option.textContent = year;
+                yearSelect.appendChild(option);
+            });
+
+            // คืนค่าที่เลือกไว้ ถ้ายังมีอยู่
+            if (years.includes(parseInt(currentVal))) {
+                yearSelect.value = currentVal;
+            } else if (years.length > 0 && currentVal === 'all') {
+                // yearSelect.value = years[0]; 
+            }
+        }
+
+        // สร้าง Dropdown ให้เลือก Lot No. อัตโนมัติจากข้อมูล
+        function populateLotFilter() {
+            const lots = [...new Set(rawData.map(item => item.lotNo).filter(v => v !== ''))].sort();
+            const lotSelect = document.getElementById('filterLot');
+            const currentVal = lotSelect.value;
+
+            lotSelect.innerHTML = '<option value="all">ทุก Lot</option>';
+            lots.forEach(lot => {
+                const option = document.createElement('option');
+                option.value = lot;
+                option.textContent = lot;
+                lotSelect.appendChild(option);
+            });
+
+            if (lots.includes(currentVal)) {
+                lotSelect.value = currentVal;
+            }
+        }
+
+        // สร้าง Dropdown ชนิดแป้งอัตโนมัติจากข้อมูล
+        function populateTypeFilter() {
+            const types = [...new Set(rawData.map(item => item.type).filter(v => v && v !== 'ไม่ระบุ'))].sort();
+            const typeSelect = document.getElementById('filterType');
+            const currentVal = typeSelect.value;
+
+            typeSelect.innerHTML = '<option value="all">ทุกชนิด</option>';
+            types.forEach(t => {
+                const option = document.createElement('option');
+                option.value = t;
+                option.textContent = t;
+                typeSelect.appendChild(option);
+            });
+
+            if (types.includes(currentVal)) {
+                typeSelect.value = currentVal;
+            }
+        }
+
+        // เมื่อเปลี่ยน Lot → อัปเดตช่วงวันที่และกรองข้อมูล
+        function onLotChange() {
+            const lot = document.getElementById('filterLot').value;
+            const dateRangeBox = document.getElementById('lotDateRangeBox');
+            const dateRangeText = document.getElementById('lotDateRangeText');
+
+            if (lot !== 'all') {
+                const lotItems = rawData.filter(item => item.lotNo === lot);
+                if (lotItems.length > 0) {
+                    const dates = lotItems.map(item => item.date.valueOf());
+                    const minDate = dayjs(Math.min(...dates));
+                    const maxDate = dayjs(Math.max(...dates));
+                    dateRangeText.textContent = `📦 Lot: ${lot}  |  ช่วงวันที่รับ: ${minDate.format('DD/MM/YYYY')} – ${maxDate.format('DD/MM/YYYY')}  |  รวม ${lotItems.length} รายการ`;
+                    dateRangeBox.classList.remove('hidden');
+                }
+            } else {
+                dateRangeBox.classList.add('hidden');
+            }
+
+            applyFilters();
+        }
+
+        // ฟังก์ชันกรองข้อมูลหลัก
+        function applyFilters() {
+            const year = document.getElementById('filterYear').value;
+            const month = document.getElementById('filterMonth').value;
+            const lot = document.getElementById('filterLot').value;
+            const type = document.getElementById('filterType').value;
+
+            // ถ้าเลือก Lot จะกรองตามช่วงวันที่ของ Lot นั้นด้วย
+            let lotMinDate = null, lotMaxDate = null;
+            if (lot !== 'all') {
+                const lotItems = rawData.filter(item => item.lotNo === lot);
+                if (lotItems.length > 0) {
+                    const dates = lotItems.map(item => item.date.valueOf());
+                    lotMinDate = dayjs(Math.min(...dates)).startOf('day');
+                    lotMaxDate = dayjs(Math.max(...dates)).endOf('day');
+                }
+            }
+
+            filteredData = rawData.filter(item => {
+                let matchYear = year === 'all' || item.date.year().toString() === year;
+                let matchMonth = month === 'all' || item.date.month().toString() === month;
+                let matchLot = lot === 'all' || item.lotNo === lot;
+                let matchType = type === 'all' || item.type === type;
+                let matchDate = true;
+                if (lotMinDate && lotMaxDate) {
+                    matchDate = !item.date.isBefore(lotMinDate) && !item.date.isAfter(lotMaxDate);
+                }
+                return matchYear && matchMonth && matchLot && matchType && matchDate;
+            });
+
+            // เรียงวันที่ล่าสุดขึ้นก่อน
+            filteredData.sort((a, b) => b.date.valueOf() - a.date.valueOf());
+
+            updateKPIs();
+            renderCharts();
+            renderTable();
+        }
+
+        // อัปเดตตัวเลขการ์ดด้านบน
+        function updateKPIs() {
+            const totalWeight = filteredData.reduce((sum, item) => sum + item.weight, 0);
+            const totalCount = filteredData.length;
+
+            const passCount = filteredData.filter(item => item.result === 'ผ่านเกณฑ์').length;
+            const passRate = totalCount > 0 ? ((passCount / totalCount) * 100).toFixed(1) : 0;
+
+            const suppliers = [...new Set(filteredData.map(item => item.supplier))].length;
+
+            document.getElementById('kpiWeight').textContent = totalWeight.toLocaleString();
+            document.getElementById('kpiPassRate').textContent = `${passRate}%`;
+            document.getElementById('kpiCount').textContent = totalCount.toLocaleString();
+            document.getElementById('kpiSupplier').textContent = suppliers;
+        }
+
+        // วาดตารางแสดงข้อมูลและ Note สรุป
+        function renderTable() {
+            const tbody = document.getElementById('dataTableBody');
+            const recordCountEl = document.getElementById('tableRecordCount');
+            const summaryNoteEl = document.getElementById('tableSummaryNote');
+            tbody.innerHTML = '';
+
+            // สร้างข้อความ Note สรุปจากข้อมูลที่กรองมาทั้งหมด
+            if (filteredData.length > 0) {
+                const passCount = filteredData.filter(item => item.result === 'ผ่านเกณฑ์').length;
+                const failCount = filteredData.filter(item => item.result === 'ไม่ผ่านเกณฑ์').length;
+                const otherCount = filteredData.length - passCount - failCount;
+
+                let noteHtml = `<strong>📌 สรุปจากข้อมูลที่เลือก:</strong> พบรายการผ่านเกณฑ์ <span class="text-emerald-600 font-semibold">${passCount}</span> ครั้ง`;
+                if (failCount > 0) noteHtml += `, ไม่ผ่านเกณฑ์ <span class="text-rose-600 font-semibold">${failCount}</span> ครั้ง`;
+                if (otherCount > 0) noteHtml += `, รอตรวจ/อื่นๆ <span class="text-slate-600 font-semibold">${otherCount}</span> ครั้ง`;
+
+                summaryNoteEl.innerHTML = noteHtml;
+                summaryNoteEl.style.display = 'inline-block';
+            } else {
+                summaryNoteEl.style.display = 'none';
+            }
+
+            // จำกัดการแสดงผลตารางไม่ให้เกิน 100 แถวเพื่อประสิทธิภาพ
+            const MAX_ROWS = 100;
+            const displayData = filteredData.slice(0, MAX_ROWS);
+
+            if (filteredData.length === 0) {
+                recordCountEl.textContent = 'ไม่พบข้อมูล';
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td colspan="6" class="px-6 py-8 text-center text-slate-500 bg-slate-50 rounded-b-lg">ไม่มีข้อมูลในเงื่อนไขที่เลือก</td>`;
+                tbody.appendChild(tr);
+                return;
+            }
+
+            // อัปเดตข้อความจำนวนรายการ
+            if (filteredData.length > MAX_ROWS) {
+                recordCountEl.textContent = `แสดง ${MAX_ROWS} รายการล่าสุด (จากทั้งหมด ${filteredData.length} รายการ)`;
+            } else {
+                recordCountEl.textContent = `แสดงทั้งหมด ${filteredData.length} รายการ`;
+            }
+
+            displayData.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = 'bg-white border-b hover:bg-slate-50 transition duration-150';
+
+                // สไตล์สีตามผลลัพธ์
+                let resultBadge = `<span class="bg-slate-100 text-slate-700 px-3 py-1 rounded-full text-xs font-medium">${item.result}</span>`;
+                if (item.result === 'ผ่านเกณฑ์') {
+                    resultBadge = `<span class="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-medium">${item.result}</span>`;
+                } else if (item.result === 'ไม่ผ่านเกณฑ์') {
+                    resultBadge = `<span class="bg-rose-100 text-rose-700 px-3 py-1 rounded-full text-xs font-medium">${item.result}</span>`;
+                }
+
+                tr.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap">${item.date.format('DD/MM/YYYY')}</td>
+                    <td class="px-6 py-4 font-medium text-slate-900">${item.supplier}</td>
+                    <td class="px-6 py-4">${item.lotNo || '-'}</td>
+                    <td class="px-6 py-4">${item.type}</td>
+                    <td class="px-6 py-4 text-right">${item.weight.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td class="px-6 py-4 text-center">${resultBadge}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // จัดเตรียมข้อมูลวาดกราฟและสั่งวาด
+        function renderCharts() {
+            renderTrendChart();
+            renderResultChart();
+            renderSupplierChart();
+            renderTypeChart();
+        }
+
+        // ช่วยสร้างกราฟเพื่อไม่ให้ซ้อนกัน
+        function createChart(canvasId, config) {
+            if (charts[canvasId]) {
+                charts[canvasId].destroy();
+            }
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            charts[canvasId] = new Chart(ctx, config);
+        }
+
+        // กราฟแนวโน้ม (Bar Chart แสดงตาม วัน/สัปดาห์/เดือน)
+        function renderTrendChart() {
+            const viewType = document.getElementById('filterView').value;
+            const grouped = {};
+
+            // ดึงข้อมูลมาเรียงลำดับเวลาให้ถูกต้องสำหรับกราฟ (เก่าไปใหม่)
+            let chartData = [...filteredData].sort((a, b) => a.date.valueOf() - b.date.valueOf());
+
+            chartData.forEach(item => {
+                let key;
+                if (viewType === 'day') {
+                    key = item.date.format('DD/MM/YYYY');
+                } else if (viewType === 'week') {
+                    key = `W${item.date.week()} ${item.date.format('YYYY')}`;
+                } else {
+                    key = item.date.format('MMM YYYY');
+                }
+
+                if (!grouped[key]) grouped[key] = 0;
+                grouped[key] += item.weight;
+            });
+
+            const labels = Object.keys(grouped);
+            const data = Object.values(grouped);
+
+            createChart('trendChart', {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'ปริมาณ (กก.)',
+                        data: data,
+                        backgroundColor: 'rgba(59, 130, 246, 0.8)', // blue-500
+                        borderRadius: 6,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: '#f1f5f9' } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        // กราฟผลการตรวจ (Doughnut Chart)
+        function renderResultChart() {
+            let pass = 0, fail = 0, other = 0;
+
+            filteredData.forEach(item => {
+                if (item.result === 'ผ่านเกณฑ์') pass++;
+                else if (item.result === 'ไม่ผ่านเกณฑ์') fail++;
+                else other++;
+            });
+
+            createChart('resultChart', {
+                type: 'doughnut',
+                data: {
+                    labels: ['ผ่านเกณฑ์', 'ไม่ผ่านเกณฑ์', 'อื่นๆ'],
+                    datasets: [{
+                        data: [pass, fail, other],
+                        backgroundColor: [
+                            '#10b981', // emerald-500
+                            '#f43f5e', // rose-500
+                            '#cbd5e1'  // slate-300
+                        ],
+                        borderWidth: 0,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '65%',
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+        }
+
+        // กราฟแยกตาม Supplier
+        function renderSupplierChart() {
+            const grouped = {};
+            filteredData.forEach(item => {
+                if (!grouped[item.supplier]) grouped[item.supplier] = 0;
+                grouped[item.supplier] += item.weight;
+            });
+
+            // เรียงลำดับจากมากไปน้อย
+            const sortedSuppliers = Object.entries(grouped).sort((a, b) => b[1] - a[1]);
+            const labels = sortedSuppliers.map(item => item[0]);
+            const data = sortedSuppliers.map(item => item[1]);
+
+            createChart('supplierChart', {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'ปริมาณรับ (กก.)',
+                        data: data,
+                        backgroundColor: '#8b5cf6', // violet-500
+                        borderRadius: 4,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y', // แนวนอน
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: { beginAtZero: true, grid: { color: '#f1f5f9' } },
+                        y: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        // กราฟสัดส่วนประเภทแป้ง (Pie Chart)
+        function renderTypeChart() {
+            const grouped = {};
+            filteredData.forEach(item => {
+                const type = item.type || 'ไม่ระบุ';
+                if (!grouped[type]) grouped[type] = 0;
+                grouped[type] += item.weight;
+            });
+
+            createChart('typeChart', {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(grouped),
+                    datasets: [{
+                        data: Object.values(grouped),
+                        backgroundColor: [
+                            '#f59e0b', // amber-500
+                            '#0ea5e9', // sky-500
+                            '#f97316', // orange-500
+                            '#14b8a6'  // teal-500
+                        ],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+        }
+
+    </script>
+</body>
+
+</html>
