@@ -236,7 +236,8 @@
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <!-- Trend Chart -->
             <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 lg:col-span-2">
-                <h3 class="text-lg font-bold text-slate-800 mb-4">📈 แนวโน้มปริมาณการรับเข้า (กก.)</h3>
+                <h3 class="text-lg font-bold text-slate-800 mb-2">📈 แนวโน้มปริมาณการรับเข้า (กก.)</h3>
+                <p id="trendChartCount" class="text-sm text-slate-500 mb-4">กำลังโหลด...</p>
                 <div class="relative h-72">
                     <canvas id="trendChart"></canvas>
                 </div>
@@ -244,7 +245,8 @@
 
             <!-- Pass/Fail Chart -->
             <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-                <h3 class="text-lg font-bold text-slate-800 mb-4">✅ ผลการตรวจรับรวม</h3>
+                <h3 class="text-lg font-bold text-slate-800 mb-2">✅ ผลการตรวจรับรวม</h3>
+                <p id="resultChartCount" class="text-sm text-slate-500 mb-4">กำลังโหลด...</p>
                 <div class="relative h-72 flex justify-center">
                     <canvas id="resultChart"></canvas>
                 </div>
@@ -255,7 +257,8 @@
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <!-- Supplier Chart -->
             <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-                <h3 class="text-lg font-bold text-slate-800 mb-4">🏭 ปริมาณรับแยกตาม Supplier</h3>
+                <h3 class="text-lg font-bold text-slate-800 mb-2">🏭 ปริมาณรับแยกตาม Supplier</h3>
+                <p id="supplierChartCount" class="text-sm text-slate-500 mb-4">กำลังโหลด...</p>
                 <div class="relative h-64">
                     <canvas id="supplierChart"></canvas>
                 </div>
@@ -263,7 +266,8 @@
 
             <!-- Flour Type Chart -->
             <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-                <h3 class="text-lg font-bold text-slate-800 mb-4">📦 สัดส่วนประเภทแป้ง</h3>
+                <h3 class="text-lg font-bold text-slate-800 mb-2">📦 สัดส่วนประเภทแป้ง</h3>
+                <p id="typeChartCount" class="text-sm text-slate-500 mb-4">กำลังโหลด...</p>
                 <div class="relative h-64 flex justify-center">
                     <canvas id="typeChart"></canvas>
                 </div>
@@ -317,6 +321,8 @@
                             <th scope="col" class="px-6 py-3">ซัพพลายเออร์</th>
                             <th scope="col" class="px-6 py-3">Lot No.</th>
                             <th scope="col" class="px-6 py-3">ประเภทแป้ง</th>
+                            <th scope="col" class="px-6 py-3">สภาพกาว</th>
+                            <th scope="col" class="px-6 py-3">หมายเหตุ</th>
                             <th scope="col" class="px-6 py-3 text-right">ปริมาณ (กก.)</th>
                             <th scope="col" class="px-6 py-3 rounded-tr-lg text-center">ผลการตรวจ</th>
                         </tr>
@@ -386,7 +392,23 @@
 
             const lotKey = keys.find(k => k.replace(/[\s_\-]/g, '').toLowerCase() === 'lotno')
                         || keys.find(k => k.toLowerCase().includes('lot'));
+            const glueKey = keys.find(k => /กาว|glue|viscosity|consistency|ความหนืด|ลักษณะ/.test(k.replace(/[\s_\-]/g, '').toLowerCase()));
+            const notesKey = keys.find(k => /note|remark|comment|หมายเหตุ/.test(k.replace(/[\s_\-]/g, '').toLowerCase()));
             console.log('[DEBUG] Detected Lot column:', lotKey);
+            console.log('[DEBUG] Detected Glue column:', glueKey, 'Notes column:', notesKey);
+
+            function normalizeGlueStatus(rawGlue, rawNote) {
+                const text = (rawGlue || '').toString().trim().toLowerCase();
+                const note = (rawNote || '').toString().trim().toLowerCase();
+                const combined = `${text} ${note}`;
+                const isSticky = /หนืด|ข้น|เหนียว|viscous|thick|sticky/.test(combined);
+                const isThin = /เหลว|runny|thin|fluid|lurp|dilute|เหลว/.test(combined);
+                if (isSticky && isThin) return 'ไม่ปกติ';
+                if (isSticky) return 'หนืด';
+                if (isThin) return 'เหลว';
+                if (text) return rawGlue;
+                return '';
+            }
 
             rawData = data.map(row => {
                 // ทำความสะอาดชื่อ Supplier ให้เหมือนกัน เช่น Sms -> SMS
@@ -398,13 +420,21 @@
                 if (rawResult.includes('ไม่ผ่าน')) result = 'ไม่ผ่านเกณฑ์';
                 else if (rawResult.includes('ผ่าน')) result = 'ผ่านเกณฑ์';
 
+                const rawGlue = glueKey ? (row[glueKey] || '').trim() : '';
+                const rawNote = notesKey ? (row[notesKey] || '').trim() : '';
+                const glueStatus = normalizeGlueStatus(rawGlue, rawNote);
+                const glueAlert = glueStatus ? 'แจ้งซัพฯ' : '';
+
                 return {
                     date: dayjs(row['ReceiveDate']), // ใช้วันที่รับของ
                     weight: parseFloat(row['Weight']) || 0,
                     supplier: supplier,
                     type: row['FlourType'] || 'ไม่ระบุ',
                     lotNo: lotKey ? (row[lotKey] || '').trim() : '',
-                    result: result
+                    result: result,
+                    glueStatus: glueStatus,
+                    glueAlert: glueAlert,
+                    note: rawNote
                 };
             }).filter(item => item.date.isValid()); // กรองเฉพาะแถวที่มีวันที่ถูกต้อง
 
@@ -575,10 +605,12 @@
                 const passCount = filteredData.filter(item => item.result === 'ผ่านเกณฑ์').length;
                 const failCount = filteredData.filter(item => item.result === 'ไม่ผ่านเกณฑ์').length;
                 const otherCount = filteredData.length - passCount - failCount;
+                const glueIssueCount = filteredData.filter(item => item.glueAlert).length;
 
                 let noteHtml = `<strong>📌 สรุปจากข้อมูลที่เลือก:</strong> พบรายการผ่านเกณฑ์ <span class="text-emerald-600 font-semibold">${passCount}</span> ครั้ง`;
                 if (failCount > 0) noteHtml += `, ไม่ผ่านเกณฑ์ <span class="text-rose-600 font-semibold">${failCount}</span> ครั้ง`;
                 if (otherCount > 0) noteHtml += `, รอตรวจ/อื่นๆ <span class="text-slate-600 font-semibold">${otherCount}</span> ครั้ง`;
+                if (glueIssueCount > 0) noteHtml += `, พบสภาพกาวผิดปกติ <span class="text-amber-600 font-semibold">${glueIssueCount}</span> รายการ (แจ้งซัพฯ)`;
 
                 summaryNoteEl.innerHTML = noteHtml;
                 summaryNoteEl.style.display = 'inline-block';
@@ -593,7 +625,7 @@
             if (filteredData.length === 0) {
                 recordCountEl.textContent = 'ไม่พบข้อมูล';
                 const tr = document.createElement('tr');
-                tr.innerHTML = `<td colspan="6" class="px-6 py-8 text-center text-slate-500 bg-slate-50 rounded-b-lg">ไม่มีข้อมูลในเงื่อนไขที่เลือก</td>`;
+                tr.innerHTML = `<td colspan="8" class="px-6 py-8 text-center text-slate-500 bg-slate-50 rounded-b-lg">ไม่มีข้อมูลในเงื่อนไขที่เลือก</td>`;
                 tbody.appendChild(tr);
                 return;
             }
@@ -617,11 +649,19 @@
                     resultBadge = `<span class="bg-rose-100 text-rose-700 px-3 py-1 rounded-full text-xs font-medium">${item.result}</span>`;
                 }
 
+                const glueBadge = item.glueStatus ?
+                    `<span class="px-3 py-1 rounded-full text-xs font-medium ${item.glueStatus === 'หนืด' ? 'bg-amber-100 text-amber-700' : item.glueStatus === 'เหลว' ? 'bg-sky-100 text-sky-700' : 'bg-rose-100 text-rose-700'}">${item.glueStatus}${item.glueAlert ? ' • แจ้งซัพฯ' : ''}</span>` :
+                    `<span class="bg-slate-100 text-slate-700 px-3 py-1 rounded-full text-xs font-medium">-</span>`;
+
+                const noteText = item.note ? `<span class="text-xs text-slate-600 block whitespace-pre-wrap">${item.note}</span>` : '<span class="text-slate-400">-</span>';
+
                 tr.innerHTML = `
                     <td class="px-6 py-4 whitespace-nowrap">${item.date.format('DD/MM/YYYY')}</td>
                     <td class="px-6 py-4 font-medium text-slate-900">${item.supplier}</td>
                     <td class="px-6 py-4">${item.lotNo || '-'}</td>
                     <td class="px-6 py-4">${item.type}</td>
+                    <td class="px-6 py-4 text-center">${glueBadge}</td>
+                    <td class="px-6 py-4">${noteText}</td>
                     <td class="px-6 py-4 text-right">${item.weight.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td class="px-6 py-4 text-center">${resultBadge}</td>
                 `;
@@ -635,6 +675,34 @@
             renderResultChart();
             renderSupplierChart();
             renderTypeChart();
+            updateChartCountBoxes();
+        }
+
+        function updateChartCountBoxes() {
+            const trendCountEl = document.getElementById('trendChartCount');
+            const resultCountEl = document.getElementById('resultChartCount');
+            const supplierCountEl = document.getElementById('supplierChartCount');
+            const typeCountEl = document.getElementById('typeChartCount');
+
+            const totalItems = filteredData.length;
+            const passCount = filteredData.filter(item => item.result === 'ผ่านเกณฑ์').length;
+            const failCount = filteredData.filter(item => item.result === 'ไม่ผ่านเกณฑ์').length;
+            const otherCount = totalItems - passCount - failCount;
+            const suppliers = [...new Set(filteredData.map(item => item.supplier))].length;
+            const types = [...new Set(filteredData.map(item => item.type))].length;
+
+            if (trendCountEl) {
+                trendCountEl.innerHTML = `<span class="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-slate-700 text-sm">แสดง ${totalItems} รายการ</span>`;
+            }
+            if (resultCountEl) {
+                resultCountEl.innerHTML = `<span class="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-slate-700 text-sm">ผ่าน ${passCount} / ไม่ผ่าน ${failCount} / อื่นๆ ${otherCount}</span>`;
+            }
+            if (supplierCountEl) {
+                supplierCountEl.innerHTML = `<span class="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-slate-700 text-sm">ซัพพลายเออร์ ${suppliers} ราย</span>`;
+            }
+            if (typeCountEl) {
+                typeCountEl.innerHTML = `<span class="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-slate-700 text-sm">ประเภทแป้ง ${types} รายการ</span>`;
+            }
         }
 
         // ช่วยสร้างกราฟเพื่อไม่ให้ซ้อนกัน
